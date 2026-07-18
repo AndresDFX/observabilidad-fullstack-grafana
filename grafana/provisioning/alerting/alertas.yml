@@ -1,0 +1,67 @@
+# Alertamiento como código (Grafana unified alerting, file provisioning).
+#
+# La regla: si más del 40% de los checkouts devuelve 5xx durante 1 minuto -> FIRING.
+#   · Con la perilla por defecto (fallo 20%) la regla queda Normal.
+#   · ./ajustar.sh fallo 50  -> supera el umbral -> Pending -> FIRING (~1-2 min).
+#   · ./ajustar.sh fallo 0   (o reset) -> baja del umbral -> Resolved.
+#
+# La notificación: un contact point tipo WEBHOOK que apunta a la PROPIA app
+# (http://app:8000/alerta, por la red interna de Compose). La app loguea la alerta
+# -> el log viaja a Loki -> la notificación misma se vuelve observable. Todo local,
+# sin correo ni Slack. (En producción cambiarías el receiver por Slack/PagerDuty/etc.)
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: taller-observabilidad
+    folder: Observabilidad Full-Stack
+    interval: 30s
+    rules:
+      - uid: alerta-checkout-5xx
+        title: Checkout con tasa de error alta
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: 100 * (sum(rate(http_requests_total{route="/checkout",status_code=~"5.."}[2m])) or vector(0)) / sum(rate(http_requests_total{route="/checkout"}[2m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [40] }
+        noDataState: OK
+        execErrState: OK
+        for: 1m
+        annotations:
+          summary: 'La tasa de error de /checkout superó el 40% (umbral del SLO del taller).'
+          descripcion: 'Provocado con ./ajustar.sh fallo <n>. Resuélvelo con ./ajustar.sh fallo 0 (el "fix") o ./ajustar.sh reset.'
+        labels:
+          severity: critical
+          origen: taller
+
+contactPoints:
+  - orgId: 1
+    name: taller-webhook
+    receivers:
+      - uid: taller-webhook-app
+        type: webhook
+        settings:
+          url: http://app:8000/alerta
+          httpMethod: POST
+
+policies:
+  - orgId: 1
+    receiver: taller-webhook
+    group_by: ["alertname"]
+    group_wait: 10s
+    group_interval: 30s
+    repeat_interval: 4h

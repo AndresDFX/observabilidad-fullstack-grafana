@@ -1,0 +1,93 @@
+# Datasources de Grafana como código (provisioning).
+#
+# Este archivo se monta SOBRE el que trae grafana/otel-lgtm, así que redefinimos las
+# tres fuentes con UIDs fijos (prometheus/tempo/loki) y activamos las CORRELACIONES,
+# que son el corazón del taller:
+#
+#   1) Prometheus -> Tempo   (exemplars): un punto de la métrica lleva a la traza.
+#   2) Tempo -> Loki         (tracesToLogsV2): desde la traza saltas al log por trace_id.
+#   3) Loki -> Tempo         (derivedFields): desde el log vuelves a la traza.
+#
+# Como todo corre DENTRO del mismo contenedor lgtm (all-in-one), Grafana llega a cada
+# backend por localhost: Prometheus :9090, Tempo :3200, Loki :3100.
+#
+# Nota sobre `$$`: Grafana interpola `$` en los archivos de provisioning. Para dejar un
+# literal `${__value.raw}` en la URL de un derived field, se escribe `$${__value.raw}`.
+apiVersion: 1
+
+# Borra las fuentes que trae otel-lgtm por si el montaje no reemplaza el archivo original
+# (evita duplicados con el mismo nombre).
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Tempo
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
+datasources:
+  # ---------------------------------------------------------------------------
+  # PROMETHEUS (métricas) — con exemplars que enlazan a Tempo por trace_id
+  # ---------------------------------------------------------------------------
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      # Exemplars: cada diamante en el panel de latencia lleva a su traza en Tempo.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: "Ver traza"
+
+  # ---------------------------------------------------------------------------
+  # TEMPO (trazas) — con salto traza -> logs de Loki por trace_id
+  # ---------------------------------------------------------------------------
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://localhost:3200
+    editable: true
+    jsonData:
+      # Desde una traza abierta, "Logs for this span/trace" consulta Loki filtrando
+      # por el trace_id y por el service_name (mapeado desde service.name).
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: true
+        filterBySpanID: false
+        tags:
+          - key: service.name
+            value: service_name
+      tracesToMetrics:
+        datasourceUid: prometheus
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+
+  # ---------------------------------------------------------------------------
+  # LOKI (logs) — con derived field que enlaza cada log a su traza en Tempo
+  # ---------------------------------------------------------------------------
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://localhost:3100
+    editable: true
+    jsonData:
+      derivedFields:
+        # OTLP guarda el trace_id como structured metadata en Loki; lo matcheamos por
+        # nombre de campo y construimos un enlace a Tempo con ese mismo valor.
+        - name: trace_id
+          matcherType: label
+          matcherRegex: "trace_id"
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: "Ver traza en Tempo"

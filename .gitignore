@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs / temporales
+*.log
+.deploy-state
+
+# Datos locales de Docker (si algún día se montan bind mounts de datos)
+data/
+
+# Artefactos de build de la presentación
+*.pptx
+build/
+
+# SO
+.DS_Store
+Thumbs.db
+
+# Perillas del taller (las escribe ./ajustar.sh; cada quien las suyas)
+.env
+
+# Basura de Windows/Google Drive
+desktop.ini

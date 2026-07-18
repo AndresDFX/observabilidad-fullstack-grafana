@@ -1,0 +1,97 @@
+# Observabilidad Full-Stack con Grafana — stack reproducible en 3 servicios.
+#
+#   lgtm     -> backend all-in-one (Grafana + Prometheus + Tempo + Loki + OTel Collector)
+#   app      -> checkout-api (FastAPI) instrumentada con OpenTelemetry
+#   loadgen  -> generador de tráfico que llena los dashboards
+#
+# Levanta todo con:  docker compose up -d --build   (o ./start.sh)
+# Grafana:           http://localhost:3000   (admin / admin)
+name: obs-fullstack
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend de observabilidad: TODO en un contenedor (LGTM + Collector).
+  # ---------------------------------------------------------------------------
+  lgtm:
+    # Tag FIJADO para reproducibilidad del evento (evita que un :latest nuevo cambie
+    # Grafana o el layout de provisioning en mitad del taller). Antes del evento, valida
+    # el layout una vez contra este tag:
+    #   docker exec obs-lgtm ls /otel-lgtm/grafana/conf/provisioning/datasources
+    # Para actualizar, sube el número a un tag probado de hub.docker.com/r/grafana/otel-lgtm.
+    image: grafana/otel-lgtm:0.28.0
+    container_name: obs-lgtm
+    ports:
+      - "3000:3000"   # Grafana (UI)
+      - "4317:4317"   # OTLP gRPC  (receptor del Collector)
+      - "4318:4318"   # OTLP HTTP  (receptor del Collector) <- la app usa este
+    environment:
+      # Con estas credenciales, otel-lgtm arranca con admin/admin y no fuerza cambio de
+      # contraseña -> el participante entra directo en la demo.
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      # Datasources y dashboards COMO CÓDIGO, montados sobre el layout de otel-lgtm.
+      - ./grafana/provisioning/datasources/datasources.yml:/otel-lgtm/grafana/conf/provisioning/datasources/datasources.yaml:ro
+      - ./grafana/provisioning/dashboards/dashboards.yml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/dashboards:/otel-lgtm/grafana/dashboards:ro
+      # Alertamiento como código: regla + contact point (webhook a la app) + política.
+      - ./grafana/provisioning/alerting:/otel-lgtm/grafana/conf/provisioning/alerting:ro
+    healthcheck:
+      # otel-lgtm es Ubuntu y trae curl; si tu imagen no lo tuviera, este health
+      # quedaría "unhealthy" pero NO bloquea al resto (la app depende de service_started).
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 90s   # Grafana v13 hace migraciones al arrancar; dale margen antes de marcar unhealthy
+
+  # ---------------------------------------------------------------------------
+  # App demo: FastAPI + OpenTelemetry -> exporta 3 señales por OTLP/HTTP a lgtm:4318
+  # ---------------------------------------------------------------------------
+  app:
+    build: ./app
+    container_name: obs-app
+    ports:
+      - "8000:8000"
+    environment:
+      # Identidad del servicio (aparece en las 3 señales).
+      - OTEL_SERVICE_NAME=checkout-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.namespace=webstore,service.version=1.0.0,deployment.environment=workshop
+      # Exportación OTLP sobre HTTP/protobuf hacia el Collector del contenedor lgtm.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      # Exemplars: adjunta trace_id a las métricas grabadas dentro de un span (métrica->traza).
+      - OTEL_METRICS_EXEMPLAR_FILTER=trace_based
+      # Exporta métricas cada 5 s para que los dashboards se llenen rápido en la demo.
+      - OTEL_METRIC_EXPORT_INTERVAL=5000
+      # No trazar el endpoint de healthcheck (ruido).
+      - OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=healthz,alerta
+      # Las "perillas" del taller (porcentajes 0-100). Se ajustan EN VIVO con
+      # ./ajustar.sh (escribe .env y recrea solo este contenedor) -> el formato
+      # del taller: giras una perilla y miras el dashboard reaccionar.
+      - CHECKOUT_FAILURE_RATE=${CHECKOUT_FAILURE_RATE:-20}
+      - SLOW_SPIKE_RATE=${SLOW_SPIKE_RATE:-15}
+    depends_on:
+      # service_started (no service_healthy): el exportador OTLP reintenta solo si lgtm
+      # aún no está listo, así que no necesitamos esperar a que Grafana responda.
+      - lgtm
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Generador de carga: httpx en bucle contra la app.
+  # ---------------------------------------------------------------------------
+  loadgen:
+    build: ./loadgen
+    container_name: obs-loadgen
+    environment:
+      - TARGET_BASE_URL=http://app:8000
+      - RPS=8
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped

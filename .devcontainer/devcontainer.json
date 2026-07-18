@@ -1,0 +1,24 @@
+{
+  "name": "Observabilidad Full-Stack con Grafana",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Grafana",
+      "onAutoForward": "notify"
+    },
+    "8000": {
+      "label": "App demo (checkout-api)",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "docker compose pull && docker compose build",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-azuretools.vscode-docker"]
+    }
+  }
+}

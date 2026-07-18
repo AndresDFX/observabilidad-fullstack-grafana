@@ -1,0 +1,18 @@
+# API web
+fastapi
+uvicorn[standard]
+
+# OpenTelemetry: API + SDK
+opentelemetry-api
+opentelemetry-sdk
+
+# Exportador OTLP sobre HTTP/protobuf (habla al :4318 del contenedor lgtm).
+# Una sola dependencia, sin gRPC -> menos superficie de fallo en el taller.
+opentelemetry-exporter-otlp-proto-http
+
+# Instrumentación automática de FastAPI (un span de servidor por request)
+opentelemetry-instrumentation-fastapi
+
+# Nota de reproducibilidad: aquí dejamos las versiones sin fijar para que
+# `pip install` siempre resuelva un conjunto compatible. En producción se
+# congelan con `pip freeze > requirements.lock` y se instala desde el lock.

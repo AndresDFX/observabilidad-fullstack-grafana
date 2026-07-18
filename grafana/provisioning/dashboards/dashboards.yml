@@ -1,0 +1,17 @@
+# Provisioning de dashboards (dashboards as code).
+# Grafana carga los .json que encuentre en `options.path` al arrancar.
+apiVersion: 1
+
+providers:
+  - name: "workshop-observabilidad"
+    orgId: 1
+    folder: "Observabilidad Full-Stack"
+    folderUid: obs-fullstack
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      # Aquí montamos ./grafana/dashboards (ver docker-compose.yml).
+      path: /otel-lgtm/grafana/dashboards
+      foldersFromFilesStructure: false
