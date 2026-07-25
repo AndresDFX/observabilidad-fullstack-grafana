@@ -7,7 +7,7 @@ OpenTelemetry que emite las tres señales (métricas, trazas, logs) hacia el bac
 **LGTM** (Loki, Grafana, Tempo, Prometheus/Mimir) todo-en-uno, con las **correlaciones**
 ya configuradas para ir del síntoma a la causa raíz sin cambiar de herramienta.
 
-## El taller en 6 scripts
+## El taller en 5 scripts
 
 El formato es simple: **construyes con un script, provocas/ajustas con otros, y cada acción se ve en
 el dashboard**. No editas código ni YAML en vivo.
@@ -17,7 +17,6 @@ el dashboard**. No editas código ni YAML en vivo.
 | `./start.sh` | **construye y levanta todo** (LGTM + app + tráfico) | los paneles RED se llenan |
 | `./trafico.sh pico\|lento\|mixto` | provoca **ráfagas** de tráfico/errores/latencia | picos en Errors / Duration |
 | `./ajustar.sh fallo\|latencia <0-100>` | **gira las perillas del sistema en vivo** | incidente 📈 y recuperación 📉 |
-| `./alerta.sh` | estado de la **alerta** provisionada + notificaciones | 🔔 Normal → Pending → FIRING |
 | `./estado.sh` | servicios, perillas activas y URLs | — |
 | `./stop.sh` | detiene y **limpia todo** (`down -v`) | — |
 
@@ -26,7 +25,6 @@ el dashboard**. No editas código ni YAML en vivo.
 ./trafico.sh pico          # 2. provoca un pico de errores  -> míralo en el dashboard
 ./ajustar.sh fallo 50      # 3. INCIDENTE: 50% de checkouts caen -> Errors se dispara
 ./ajustar.sh fallo 0       #    "el fix": la curva de errores cae en picada 📉
-./alerta.sh                #    ¿la ALERTA está Normal/Pending/FIRING? + notificaciones 🔔
 ./stop.sh                  # 4. limpia todo
 ```
 
@@ -105,8 +103,6 @@ Configuradas en `grafana/provisioning/datasources/datasources.yml`:
 ./ajustar.sh fallo 0     # "el fix": recuperación en vivo
 ./ajustar.sh latencia 60 # 60% de /slow con picos de latencia
 ./ajustar.sh reset       # vuelve a los valores del taller (fallo 20, latencia 5)
-./alerta.sh              # estado de la alerta (FIRING con fallo>=50) + notificaciones recibidas
-./alerta.sh probar       # receta completa para dispararla y resolverla
 ./estado.sh              # servicios + perillas activas + URLs
 ```
 
@@ -146,7 +142,6 @@ docker compose logs -f loadgen
 ├── start.sh                     # construye y levanta TODO (+ imprime el mapa de scripts)
 ├── trafico.sh                   # provoca ráfagas: pico | lento | mixto
 ├── ajustar.sh                   # gira las perillas en vivo: fallo | latencia | reset | estado
-├── alerta.sh                    # estado de la ALERTA + notificaciones recibidas
 ├── estado.sh                    # servicios, perillas y URLs
 ├── stop.sh                      # detiene y limpia todo (down -v)
 ├── app/
@@ -160,7 +155,7 @@ docker compose logs -f loadgen
     ├── provisioning/
     │   ├── datasources/datasources.yml   # Prometheus/Tempo/Loki + correlaciones
     │   ├── dashboards/dashboards.yml
-    │   └── alerting/alertas.yml          # ALERTA como código: regla + webhook + política
+    │   └── alerting/alertas.yml          # alerta como código (bonus, no se usa en el taller)
     └── dashboards/red-dashboard.json     # dashboard RED con exemplars
 ```
 
