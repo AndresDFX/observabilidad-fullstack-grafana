@@ -19,7 +19,7 @@
 
 ### El formato del taller: construye → ajusta → míralo en el dashboard
 
-Todo el taller se maneja con **6 scripts**. Construyes el sistema con uno, luego "giras perillas"
+Todo el taller se maneja con **5 scripts**. Construyes el sistema con uno, luego "giras perillas"
 y provocas escenarios con otros, y **cada acción tiene un efecto visible en Grafana**. Nunca editas
 YAML ni código en vivo: script → dashboard → entender.
 
@@ -28,7 +28,6 @@ YAML ni código en vivo: script → dashboard → entender.
 | `./start.sh` | **construye y levanta todo** (backend LGTM + app + tráfico) | los paneles RED empiezan a llenarse |
 | `./trafico.sh pico\|lento\|mixto` | provoca **ráfagas** de tráfico/errores/latencia | picos en Errors / Duration |
 | `./ajustar.sh fallo\|latencia <0-100>` | **gira las perillas del sistema en vivo** (tasa de fallo, latencia) | el dashboard cambia de nivel: incidente 📈 y recuperación 📉 |
-| `./alerta.sh` | estado de la **alerta** provisionada + notificaciones recibidas | 🔔 Normal → Pending → FIRING → Resolved |
 | `./estado.sh` | servicios, perillas activas y URLs | — |
 | `./stop.sh` | detiene y **limpia todo** | — |
 
@@ -114,7 +113,6 @@ ls
 ├── start.sh                         → PASO 1: construye y levanta TODO
 ├── trafico.sh                       → provoca ráfagas (pico | lento | mixto)
 ├── ajustar.sh                       → gira las perillas en vivo (fallo | latencia | reset)
-├── alerta.sh                        → estado de la alerta + notificaciones recibidas
 ├── estado.sh                        → servicios, perillas y URLs
 ├── stop.sh                          → detiene y limpia TODO
 ├── app/
@@ -128,7 +126,7 @@ ls
     ├── provisioning/
     │   ├── datasources/datasources.yml   → Prometheus/Tempo/Loki + correlaciones
     │   ├── dashboards/dashboards.yml
-    │   └── alerting/alertas.yml          → la ALERTA como código (regla + webhook + política)
+    │   └── alerting/alertas.yml          → alerta como código (no la usamos hoy; queda de regalo)
     └── dashboards/red-dashboard.json     → dashboard RED con exemplars
 ```
 
@@ -162,7 +160,6 @@ La salida termina así — ese bloque es tu guía de navegación:
     ./trafico.sh lento       -> provoca un pico de latencia     (míralo en el p95 de Duration)
     ./ajustar.sh fallo 50    -> INCIDENTE: 50% de checkouts caen (mira Errors dispararse)
     ./ajustar.sh fallo 0     -> "el fix": mira la recuperación en vivo 📉
-    ./alerta.sh              -> ¿la ALERTA está Normal/Pending/FIRING? 🔔
     ...
 ```
 
@@ -395,6 +392,33 @@ subida es el incidente; la caída, el fix):
 ./ajustar.sh reset      # fallo 20%, latencia 5%
 ```
 
+### 📊 Qué números esperar exactamente (medidos en una corrida real)
+
+Así sabes si tu entorno se está portando bien. Los dos stats de arriba cambian de **color**, que es
+la señal más fácil de leer en vivo:
+
+| Estado | `Errors — % de 5xx` | `Duration — p95` |
+|---|---|---|
+| **Baseline** (tras `./start.sh` o `reset`) | ~2% 🟡 | ~0.38 s 🟢 |
+| `./ajustar.sh fallo 50` | **~8% 🔴** | **~3.1 s 🔴** |
+| `./ajustar.sh fallo 0` ("el fix") | 0% 🟢 | ~0.34 s 🟢 |
+| `./ajustar.sh latencia 60` | ~2% 🟡 | **~1.8 s 🔴** |
+| `./trafico.sh lento` (ráfaga) | ~2% 🟡 | **~2.2 s 🔴** |
+
+Dos cosas que sorprenden y **no** son errores:
+
+- **El p95 en reposo está en verde.** Correcto: en baseline el sistema está *sano* (el 95% de las
+  peticiones responde en menos de 0.4 s). Lo interesante es que **se pone rojo** en cuanto giras
+  cualquier perilla. Verde no es que "no funcione": es tu punto de partida.
+- **El % de errores no llega al 50% aunque pongas `fallo 50`.** Es porque `/checkout` es solo
+  ~10% del tráfico total: el 50% *de ese 10%* son ~5% del total. Mira **"Errors — 5xx/s por ruta"**
+  para ver el impacto concentrado donde de verdad ocurre.
+
+> ⚠️ **Si `./ajustar.sh fallo 50` te BAJA los errores** en vez de subirlos, es que venías de un valor
+> más alto (p. ej. `fallo 60`). Las perillas viven en `.env` y `./ajustar.sh` las deja escritas.
+> Comprueba con `./ajustar.sh estado` y vuelve al baseline con `./ajustar.sh reset`. (Desde esta
+> versión, `./start.sh` ya resetea las perillas por ti en cada arranque.)
+
 > 🎛️ **La otra perilla:** `./ajustar.sh latencia 60` hace que el 60% de las peticiones a `/slow`
 > tengan picos de 1–2.5 s → mira el **p95** cambiar de nivel en Duration (el p99 no: ese lo fija
 > la perilla `fallo`, no esta). Y `./ajustar.sh estado`
@@ -407,88 +431,7 @@ subida es el incidente; la caída, el fix):
 
 ---
 
-## Paso 6 — Alertamiento: que el sistema te busque a ti
-
-Hasta aquí **tú** miras el dashboard. En producción, a las 3am, nadie lo mira: la **alerta** invierte
-la dirección. El taller trae una regla provisionada **como código**
-(`grafana/provisioning/alerting/alertas.yml`), con un criterio de impacto al usuario:
-
-> **"Si más del 40% de los checkouts falla durante 1 minuto → FIRING"**
-
-Y la notificación llega por **webhook a la propia app** (`POST /alerta`), que la loguea → el log
-viaja a **Loki** → *la alerta misma queda observable en el mismo stack*. Todo local, sin correo ni
-Slack (en producción solo cambiarías el contact point).
-
-**1. Mira el estado inicial de la regla:**
-
-```bash
-./alerta.sh
-```
-
-```
-==> Estado de la regla:
-   Checkout con tasa de error alta: 🟢 Normal
-```
-
-**2. Provoca el incidente** (supera el umbral del 40%):
-
-```bash
-./ajustar.sh fallo 60
-```
-
-**3. Observa el ciclo de vida** — corre `./alerta.sh` cada ~30 s (o mira **Grafana → Alerting →
-Alert rules**): verás `🟢 Normal → 🟡 Pending → 🔴 FIRING` en ~1–2 min. No es lentitud: el `for: 1m`
-de la regla es **anti-ruido** (no te despierta por un blip de 10 segundos).
-
-Así se ve la regla disparada (captura real del taller — nota el badge **Firing** y cómo la consulta **cruza el umbral de 40**):
-
-![La regla del taller en FIRING: la consulta cruza el umbral (40) y el estado pasa a Firing](capturas/grafana-alertas-firing.png)
-
-### Anatomía del tablero de alertas (qué significa cada cosa)
-
-| Elemento | Qué es | En el taller |
-|---|---|---|
-| **State** | el semáforo de la regla | `Normal` (verde) → `Pending` (amarillo: condición cumplida, esperando el `for`) → `Firing` (rojo: notificando) |
-| **Query (A)** | la consulta que se evalúa | PromQL: % de 5xx de `/checkout` en los últimos 2 min |
-| **Condition (C)** | el umbral | `> 40` (por eso `fallo 20` no dispara y `fallo 50+` sí) |
-| **For** | cuánto debe sostenerse | `1m` — el filtro **anti-ruido**: un blip de 10 s no despierta a nadie |
-| **Labels** | metadatos para enrutar | `severity=critical`, `origen=taller` → la política decide a qué contact point va |
-| **Contact point** | a dónde notifica | `taller-webhook` → `POST http://app:8000/alerta` (en prod: Slack/PagerDuty) |
-
-Y el **detalle de la regla** (clic en su nombre) muestra la consulta, el umbral y el historial de
-estados — útil para explicar *por qué* disparó:
-
-![Detalle de la regla: query PromQL, condición y estado](capturas/grafana-alerta-detalle.png)
-
-**4. Mira llegar la notificación** (el webhook quedó guardado en **Loki**, la memoria durable):
-
-```bash
-./alerta.sh
-```
-
-```
-... WARNING [trace_id=0] 🔔 ALERTA FIRING: Checkout con tasa de error alta — La tasa de error de /checkout superó el 40% ...
-```
-
-Es lo mismo que verías en **Loki** (Explore): `{service_name="checkout-api"} |= "ALERTA"` — la
-notificación es un log más, y por eso sobrevive aunque el contenedor de la app se recree. 🤯
-
-**5. Despliega "el fix" y mira resolverse sola:**
-
-```bash
-./ajustar.sh fallo 0      # en ~1 min: ✅ Resolved (y llega el webhook de resolución)
-./ajustar.sh reset        # vuelve a los valores del taller
-```
-
-> 💡 **El criterio importa más que la tecnología:** la regla NO dice "CPU > 90%"; dice "los usuarios
-> no pueden pagar". Esa es la única clase de alerta por la que vale la pena despertarse — y conecta
-> con el SLO/error budget de la charla.
-
-📷 **Pantallazo sugerido:** Grafana → Alerting → Alert rules con la regla en **rojo (FIRING)** junto a la terminal con el log `🔔 ALERTA FIRING`.
-
----
-
-## Paso 7 — Explorar las tres señales por separado (Explore)
+## Paso 6 — Explorar las tres señales por separado (Explore)
 
 Para afianzar, usa **Explore** (menú lateral) con cada datasource:
 
@@ -520,7 +463,7 @@ Service Name = checkout-api ; Status = error       # trazas fallidas
 
 ---
 
-## Paso 8 — Limpiar todo (¡importante!)
+## Paso 7 — Limpiar todo (¡importante!)
 
 Como todo lo demás, con un script:
 
@@ -546,21 +489,17 @@ Esto elimina:
 ## Trabajo futuro: llévate la práctica a casa 🚀
 
 El taller te deja la base; estos son los **siguientes pasos naturales**, en orden de dificultad
-(cada uno es un buen ejercicio de "dashboards y alertas como código"):
+(cada uno es un buen ejercicio de "dashboards como código"):
 
 1. **Panel de SLO/error budget** — añade al dashboard un panel que compare tu tasa de éxito contra
    un objetivo (p. ej. 99.5%) y muestre cuánto presupuesto de error llevas quemado. Es la 4ª
    pregunta ("¿actúo ya?") hecha panel.
-2. **Alerta por burn-rate (la evolución del umbral fijo)** — la regla del taller usa `> 40%`
-   (didáctico); en producción se alerta por **velocidad de quema del error budget** en dos ventanas
-   (p. ej. 5m y 1h). Busca "multiwindow burn rate alerts" en la doc de Google SRE / Grafana.
-3. **Contact point real** — cambia el webhook del taller por **Slack o Telegram** en
-   `grafana/provisioning/alerting/alertas.yml` (solo el bloque `contactPoints`; la regla no se toca).
-4. **Silences y mute timings** — programa ventanas de silencio (deploys, mantenimientos) para que
-   la alerta no moleste cuando el ruido es esperado (Alerting → Silences).
-5. **Instrumenta TU app** — OpenTelemetry tiene SDKs para casi todo lenguaje; replica el patrón:
+
+
+
+2. **Instrumenta TU app** — OpenTelemetry tiene SDKs para casi todo lenguaje; replica el patrón:
    3 señales por OTLP + `trace_id` en los logs + exemplars en el histograma.
-6. **Producción real** — Loki/Tempo/Mimir en modo distribuido, tail-sampling de trazas y retención
+3. **Producción real** — Loki/Tempo/Mimir en modo distribuido, tail-sampling de trazas y retención
    por señal (ver FAQ "¿otel-lgtm sirve para producción?").
 
 > 🎓 El mejor ejercicio: cuando tengas tu primer **drill-down métrica → traza → log en TU app**,
@@ -581,8 +520,6 @@ El taller te deja la base; estos son los **siguientes pasos naturales**, en orde
 | No hay exemplars (diamantes) | Pocos datos o exemplar-storage | Usa el Plan B: Explore→Tempo→Search (ver Paso 4) |
 | La traza no muestra logs | `tracesToLogsV2` o ventana de tiempo | Amplía el rango; en Explore→Loki: `{service_name="checkout-api"} \|= "ERROR"` |
 | La app no responde en :8000 | Contenedor `app` caído | `docker compose logs app`; `docker compose up -d --build app` |
-| La alerta no pasa a FIRING | Umbral no superado o poco tiempo | `./ajustar.sh estado` (¿fallo ≥ 50?); espera 1–2 min (evalúa cada 30 s + `for: 1m`); revisa Grafana → Alerting |
-| No llega la notificación del webhook | La app no está sana o la política no cargó | `docker compose logs app \| grep ALERTA`; `curl -s -u admin:admin localhost:3000/api/v1/provisioning/contact-points` |
 | `loadgen` no genera tráfico | La app tardó en estar sana | `docker compose logs loadgen`; reinícialo: `docker compose restart loadgen` |
 | Nombre de métrica distinto al del dashboard | Normalización OTLP→Prometheus | En Explore→Prometheus, Metrics browser, busca `http_request` y ajusta la query |
 

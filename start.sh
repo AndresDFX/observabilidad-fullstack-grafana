@@ -2,6 +2,25 @@
 # start.sh — PASO 1 del taller: construye y levanta TODO el stack con un comando.
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Baseline DETERMINISTA: siempre arrancamos en fallo 20% / latencia 5%.
+#
+# POR QUÉ: ./ajustar.sh guarda las perillas en `.env`, y `.env` SOBREVIVE a stop.sh
+# (está en .gitignore, no en el repo). Sin esto, si en una sesión anterior quedó
+# `CHECKOUT_FAILURE_RATE=60`, el siguiente ./start.sh arranca al 60% y entonces el
+# "./ajustar.sh fallo 50" de la guía —que debería SUBIR los errores— los BAJA.
+# En vivo eso arruina el momento del incidente. Ahora cada ./start.sh parte de cero.
+# ---------------------------------------------------------------------------
+if [ -f .env ]; then
+  echo "==> Reiniciando las perillas al baseline del taller (fallo 20%, latencia 5%)"
+  echo "    (tu .env anterior tenía: $(tr '\n' ' ' < .env))"
+fi
+cat > .env <<'ENV'
+# Perillas del taller. Las reescribe ./ajustar.sh y las resetea ./start.sh.
+CHECKOUT_FAILURE_RATE=20
+SLOW_SPIKE_RATE=5
+ENV
+
 echo "==> Construyendo y levantando el stack (lgtm + app + loadgen)..."
 docker compose up -d --build
 
@@ -30,7 +49,6 @@ cat <<EOF
     ./trafico.sh lento       -> provoca un pico de latencia     (míralo en el p95 de Duration)
     ./ajustar.sh fallo 50    -> INCIDENTE: 50% de checkouts caen (mira Errors dispararse)
     ./ajustar.sh fallo 0     -> "el fix": mira la recuperación en vivo 📉
-    ./alerta.sh              -> ¿la ALERTA está Normal/Pending/FIRING? + notificaciones 🔔
     ./ajustar.sh reset       -> vuelve a los valores del taller
     ./estado.sh              -> servicios, perillas y URLs
     ./stop.sh                -> detener y limpiar TODO
