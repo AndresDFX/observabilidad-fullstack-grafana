@@ -1,0 +1,21 @@
+# Finales de línea: los scripts y la config DEBEN quedar en LF siempre.
+#
+# POR QUÉ: si alguien clona este repo en Windows con `core.autocrlf=true` (el valor por
+# defecto de Git for Windows), git convierte los .sh a CRLF al hacer checkout. Ese "\r"
+# invisible rompe los scripts en cualquier shell tipo Unix (WSL, Git Bash, un contenedor):
+#
+#   trafico.sh: line 45: syntax error near unexpected token `$'{\r''
+#   estado.sh:  line 3:  set: pipefail: invalid option name        <- es "pipefail\r"
+#
+# Con `eol=lf` el checkout es LF pase lo que pase, en cualquier sistema operativo.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.py    text eol=lf
+*.md    text eol=lf
+
+# Binarios: que git no los toque.
+*.png   binary
