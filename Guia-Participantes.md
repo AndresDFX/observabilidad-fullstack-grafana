@@ -282,7 +282,7 @@ paneles mirar**:
 Ahora el de latencia:
 
 ```bash
-./trafico.sh lento     # ráfaga a /slow -> mira el p95 dispararse en Duration
+./trafico.sh lento     # pico forzado en /slow -> mira el p95 dispararse en Duration
 ```
 
 | Escenario | Qué provoca | Qué verás en el dashboard |

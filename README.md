@@ -100,7 +100,7 @@ Configuradas en `grafana/provisioning/datasources/datasources.yml`:
 
 ```bash
 ./trafico.sh pico        # ráfaga de checkouts -> pico en Errors
-./trafico.sh lento       # ráfaga a /slow      -> sube el p95 en Duration
+./trafico.sh lento       # pico forzado en /slow -> sube el p95 en Duration
 ./ajustar.sh fallo 50    # el 50% de checkouts falla (incidente)
 ./ajustar.sh fallo 0     # "el fix": recuperación en vivo
 ./ajustar.sh latencia 60 # 60% de /slow con picos de latencia
