@@ -6,7 +6,13 @@ providers:
   - name: "workshop-observabilidad"
     orgId: 1
     folder: "Observabilidad Full-Stack"
-    folderUid: obs-fullstack
+    # OJO: NO pongas `folderUid` aquí. El provisioning de ALERTAS
+    # (provisioning/alerting/alertas.yml) referencia su carpeta solo por TÍTULO —el
+    # esquema de alerting no acepta folderUid— y hace "buscar-o-crear por título".
+    # Si aquí se fija un UID y el provisioner de alertas corre primero, Grafana crea
+    # DOS carpetas con el mismo nombre ("Observabilidad Full-Stack"): la de la alerta
+    # y la del dashboard. La vacía es la de la alerta (una regla no es un dashboard).
+    # Sin folderUid, ambos resuelven por título y convergen en UNA sola carpeta.
     type: file
     disableDeletion: false
     updateIntervalSeconds: 10

@@ -27,7 +27,7 @@ cat <<EOF
 
   EL RESTO DEL TALLER SON ESTOS SCRIPTS (en este orden):
     ./trafico.sh pico        -> provoca un pico de errores      (míralo aparecer en Errors)
-    ./trafico.sh lento       -> provoca un pico de latencia     (míralo en Duration p95/p99)
+    ./trafico.sh lento       -> provoca un pico de latencia     (míralo en el p95 de Duration)
     ./ajustar.sh fallo 50    -> INCIDENTE: 50% de checkouts caen (mira Errors dispararse)
     ./ajustar.sh fallo 0     -> "el fix": mira la recuperación en vivo 📉
     ./alerta.sh              -> ¿la ALERTA está Normal/Pending/FIRING? + notificaciones 🔔

@@ -8,7 +8,7 @@
 #   ./ajustar.sh fallo 50      # el 50% de los checkouts fallan  (INCIDENTE GRAVE)
 #   ./ajustar.sh fallo 0       # nadie falla                    ("desplegaste el fix")
 #   ./ajustar.sh latencia 60   # el 60% de /slow tiene picos de 1-2.5 s
-#   ./ajustar.sh reset         # vuelve a los valores del taller (fallo 20, latencia 15)
+#   ./ajustar.sh reset         # vuelve a los valores del taller (fallo 20, latencia 10)
 #   ./ajustar.sh estado        # muestra las perillas actuales
 #
 # Cómo funciona: escribe la perilla en `.env` (Compose lo lee automáticamente) y
@@ -71,20 +71,22 @@ EOF
     cat <<'EOF'
 
  👀 QUÉ MIRAR EN EL DASHBOARD (~30-60 s):
-    · "Duration — p95 (todas las rutas)" y "Duration — latencia p50 / p95 / p99 (con exemplars)" -> el p95/p99 cambia de nivel
+    · "Duration — p95 (todas las rutas)" y "Duration — latencia p50 / p95 / p99 (con exemplars)"
+      -> el p95 (NARANJA) cambia de nivel. El p99 apenas se mueve: esta perilla toca /slow,
+         y el p99 lo gobiernan los timeouts de /checkout (usa la perilla "fallo" para eso).
     · Los diamantes (exemplars) de la zona alta te llevan a las trazas lentas
 EOF
     ;;
   reset)
-    echo "==> Volviendo a los valores del taller (fallo 20%, latencia 15%)..."
+    echo "==> Volviendo a los valores del taller (fallo 20%, latencia 10%)..."
     set_var CHECKOUT_FAILURE_RATE 20
-    set_var SLOW_SPIKE_RATE 15
+    set_var SLOW_SPIKE_RATE 10
     aplicar
     ;;
   estado)
     echo "Perillas configuradas (${ENV_FILE}):"
     echo "  CHECKOUT_FAILURE_RATE=$(get_var CHECKOUT_FAILURE_RATE)  (vacío = 20 por defecto)"
-    echo "  SLOW_SPIKE_RATE=$(get_var SLOW_SPIKE_RATE)  (vacío = 15 por defecto)"
+    echo "  SLOW_SPIKE_RATE=$(get_var SLOW_SPIKE_RATE)  (vacío = 10 por defecto)"
     echo
     echo "Perillas ACTIVAS en el contenedor:"
     docker compose exec -T app sh -c 'echo "  CHECKOUT_FAILURE_RATE=${CHECKOUT_FAILURE_RATE}%  SLOW_SPIKE_RATE=${SLOW_SPIKE_RATE}%"' 2>/dev/null \

@@ -159,7 +159,7 @@ La salida termina así — ese bloque es tu guía de navegación:
 
   EL RESTO DEL TALLER SON ESTOS SCRIPTS (en este orden):
     ./trafico.sh pico        -> provoca un pico de errores      (míralo aparecer en Errors)
-    ./trafico.sh lento       -> provoca un pico de latencia     (míralo en Duration p95/p99)
+    ./trafico.sh lento       -> provoca un pico de latencia     (míralo en el p95 de Duration)
     ./ajustar.sh fallo 50    -> INCIDENTE: 50% de checkouts caen (mira Errors dispararse)
     ./ajustar.sh fallo 0     -> "el fix": mira la recuperación en vivo 📉
     ./alerta.sh              -> ¿la ALERTA está Normal/Pending/FIRING? 🔔
@@ -173,7 +173,7 @@ Verifica el estado cuando quieras:
 ```
 
 Deberías ver los tres servicios `Up` (`lgtm` y `app` como `healthy`) y las perillas activas
-(`CHECKOUT_FAILURE_RATE=20%  SLOW_SPIKE_RATE=15%`).
+(`CHECKOUT_FAILURE_RATE=20%  SLOW_SPIKE_RATE=10%`).
 
 > ⏱️ En Codespaces, el `.devcontainer` ya corrió `docker compose pull && build` al crear el entorno
 > (pre-descargó `otel-lgtm` ~1 GB y construyó las imágenes), así que este `start.sh` suele ser rápido.
@@ -210,10 +210,10 @@ propio taller):
 |---|---|---|
 | **Rate — peticiones/s (stat, arriba izq.)** | peticiones/s totales | pulso de tráfico; si cae a 0, nadie te está llamando (¿caída total?) |
 | **Errors — % de 5xx (stat, centro)** | % de respuestas 5xx | el semáforo: verde <1%, ámbar, rojo. Aquí ~2–3% por el 20% de fallos de `/checkout` sobre el total |
-| **Duration — p95 (stat, der.)** | latencia p95 global | "el 95% de las peticiones responde en menos de esto" |
+| **Duration — p95 (todas las rutas)** (stat, der.) | latencia p95 global | "el 95% de las peticiones responde en menos de esto" |
 | **Rate por ruta (timeseries)** | req/s por endpoint | ves que `/` domina y `/checkout`/`/slow` son minoría |
 | **Errors 5xx/s por ruta (timeseries)** | errores por endpoint | el **pico vive en `/checkout`** — el "¿para quién?" |
-| **Duration — latencia p50 / p95 / p99 (con exemplars)** | latencia por percentil | el **p99 (azul)** salta con `/slow`; los **diamantes verdes** son *exemplars* → clic para saltar a la traza |
+| **Duration — latencia p50 / p95 / p99 (con exemplars)** | latencia por percentil | el que salta con `/slow` es el **p95 (naranja)**; el **p99 (azul)** lo fijan los `/checkout` que fallan por timeout (~3 s). Los **diamantes** son *exemplars* → clic para saltar a la traza |
 
 > 🔑 **Fíjate en los diamantes** del panel de Duration: cada uno es una petición real con su
 > `trace_id`. Son la puerta de entrada al drill-down del Paso 4.
@@ -282,13 +282,13 @@ paneles mirar**:
 Ahora el de latencia:
 
 ```bash
-./trafico.sh lento     # ráfaga a /slow -> mira el p95/p99 dispararse en Duration
+./trafico.sh lento     # ráfaga a /slow -> mira el p95 dispararse en Duration
 ```
 
 | Escenario | Qué provoca | Qué verás en el dashboard |
 |---|---|---|
 | `./trafico.sh pico` | ráfaga de checkouts (~20% fallan con 503) | pico rojo en **Errors**, sube el % de 5xx |
-| `./trafico.sh lento` | ráfaga a `/slow` (picos de 1–2.5 s) | el **p99** (azul) se dispara en Duration |
+| `./trafico.sh lento` | ráfaga a `/slow` (picos de 1–2.5 s) | el **p95** (naranja) salta de ~0.4 s a ~1.3 s: se triplica. El **p99 no se mueve** — ese lo fijan los timeouts de `/checkout` |
 | `./trafico.sh mixto` | de todo un poco | suben las tres rutas en Rate |
 
 > 🔁 **La mecánica del taller es esta:** script en la terminal → 30 s → efecto en el dashboard.
@@ -315,7 +315,7 @@ Y estas son las **tres correlaciones** que lo hacen posible (configuradas como c
 
 **Clic 1 — de la métrica a la traza (exemplar):**
 1. En el dashboard, mira el panel **Duration — latencia p50 / p95 / p99 (con exemplars)**.
-2. Verás **diamantes** sobre las líneas: son *exemplars*, cada uno es una petición real.
+2. Verás **diamantes** repartidos por el panel: son *exemplars*. Ojo, **no van sobre las líneas**: cada diamante se dibuja a la latencia REAL de UNA petición concreta. La línea es la estadística; el diamante es un caso real.
 3. Pasa el cursor sobre un diamante en la zona **más alta** (arriba de ~2.5 s) → tooltip con su `trace_id` y un botón **"Ver traza"**. Clic → se abre **Tempo**.
 
 > 🔑 **Por qué los diamantes más altos son los que te interesan:** un checkout que falla lo hace por
@@ -392,11 +392,12 @@ subida es el incidente; la caída, el fix):
 **4. Vuelve a los valores del taller:**
 
 ```bash
-./ajustar.sh reset      # fallo 20%, latencia 15%
+./ajustar.sh reset      # fallo 20%, latencia 10%
 ```
 
 > 🎛️ **La otra perilla:** `./ajustar.sh latencia 60` hace que el 60% de las peticiones a `/slow`
-> tengan picos de 1–2.5 s → mira el p95/p99 cambiar de nivel en Duration. Y `./ajustar.sh estado`
+> tengan picos de 1–2.5 s → mira el **p95** cambiar de nivel en Duration (el p99 no: ese lo fija
+> la perilla `fallo`, no esta). Y `./ajustar.sh estado`
 > te muestra las perillas activas en cualquier momento.
 
 > 💡 **Por qué esto importa:** la mitad de la observabilidad es *entender qué cambió*. Aquí el

@@ -3,7 +3,7 @@
 #
 # Uso:
 #   ./trafico.sh pico      # ráfaga de checkouts  -> pico en "Errors — 5xx/s por ruta"
-#   ./trafico.sh lento     # ráfaga a /slow       -> sube el p95/p99 en "Duration"
+#   ./trafico.sh lento     # ráfaga a /slow       -> sube el p95 en "Duration"
 #   ./trafico.sh mixto     # un poco de todo (por defecto)
 #
 # El loadgen ya genera tráfico de fondo; esto añade una RÁFAGA puntual para que
@@ -50,9 +50,12 @@ EOF
     cat <<'EOF'
 
  👀 QUÉ MIRAR EN EL DASHBOARD (dale ~30 s):
-    · "Duration — p95 (todas las rutas)"      -> sube
-    · "Duration — latencia p50 / p95 / p99 (con exemplars)" -> el p99 (azul) se dispara;
-      los diamantes de la zona ALTA son las peticiones lentas -> clic para ver su traza
+    · "Duration — p95 (todas las rutas)"      -> sube (~0.4 s -> ~1.3 s)
+    · "Duration — latencia p50 / p95 / p99 (con exemplars)" -> el que salta es el p95
+      (NARANJA), no el p99: el p99 lo fijan los timeouts de /checkout (~3 s) y esta
+      ráfaga ni los toca (de hecho puede BAJARLO, al diluirlos). Para mover el p99
+      usa "./trafico.sh pico" o "./ajustar.sh fallo <n>".
+    · Los diamantes de la zona 1-2.5 s son estas peticiones lentas -> clic para ver su traza
 EOF
     ;;
   mixto)

@@ -89,12 +89,24 @@ REQUESTS = meter.create_counter(
 
 # Histogram -> en Prometheus: http_request_duration_seconds_bucket/_count/_sum
 # Buckets adecuados para SEGUNDOS (los de por defecto asumen 0..10000 y romperían p95).
+#
+# POR QUÉ ESTOS CORTES (no son arbitrarios): histogram_quantile() de Prometheus INTERPOLA
+# linealmente dentro del bucket donde cae el percentil, así que un bucket ancho miente.
+# Con los cortes "redondos" clásicos (..., 1, 2, 5, 10) los timeouts de /checkout (~2.8-3.5 s)
+# caían todos en el bucket ancho (2, 5] y el p99 se reportaba en ~4.0 s cuando la realidad
+# era ~3.2 s: un +25% de error, y un número que NO existe en ninguna petición real.
+# Igual pasaba con el p95 en (0.5, 1.0].
+#   · 0.4 y 0.6      -> resolución donde vive el p95 (picos de /slow, 1.0-2.5 s)
+#   · 2.5, 3.0, 3.5  -> resolución donde vive el p99 (timeouts de /checkout, 2.8-3.5 s)
+# Medido con 12 simulaciones de la distribución real: error del p95 +16.6% -> 0.0% y
+# del p99 +24.9% -> 0.0%. Costo: 20 series de _bucket más (48 -> 68). Despreciable.
 DURATION = meter.create_histogram(
     name="http_request_duration",
     unit="s",
     description="Duración de las peticiones HTTP en segundos (RED: Duration)",
     explicit_bucket_boundaries_advisory=[
-        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0,
+        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.4, 0.6,
+        1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 5.0, 10.0,
     ],
 )
 
@@ -153,7 +165,12 @@ def _pct(env_name: str, default: str) -> float:
 
 
 CHECKOUT_FAILURE_RATE = _pct("CHECKOUT_FAILURE_RATE", "20")  # % de checkouts que fallan (503)
-SLOW_SPIKE_RATE = _pct("SLOW_SPIKE_RATE", "15")              # % de /slow con pico de latencia
+SLOW_SPIKE_RATE = _pct("SLOW_SPIKE_RATE", "10")              # % de /slow con pico de latencia
+# OJO al 10%: con 15% la cola por encima de 0.4 s quedaba en EXACTAMENTE el 5% del trafico
+# (0.20*0.15 + 0.02 de checkouts fallidos), justo en el filo del p95 -> el p95 parpadeaba
+# entre ~0.4 s y ~1.5 s en reposo, sin que nadie tocara nada, y la demo "mira subir el p95"
+# fallaba la mitad de las veces. Con 10% la cola baja al 4% y el p95 se queda quieto en
+# ~0.4 s, asi que la rafaga de ./trafico.sh lento se ve como un salto limpio y repetible.
 
 log.info(
     "perillas: CHECKOUT_FAILURE_RATE=%d%% | SLOW_SPIKE_RATE=%d%%",
@@ -216,7 +233,7 @@ async def root():
 async def slow():
     """Latencia variable: la mayoría rápido, con picos ocasionales (cola larga)."""
     with tracer.start_as_current_span("query_inventory") as span:
-        # SLOW_SPIKE_RATE (perilla, def. 15%) de las veces se dispara la latencia
+        # SLOW_SPIKE_RATE (perilla, def. 10%) de las veces se dispara la latencia
         # (dependencia lenta simulada). Ajústala con: ./ajustar.sh latencia <0-100>
         if random.random() < SLOW_SPIKE_RATE:
             delay = random.uniform(1.0, 2.5)
