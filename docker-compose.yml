@@ -70,7 +70,7 @@ services:
       # ./ajustar.sh (escribe .env y recrea solo este contenedor) -> el formato
       # del taller: giras una perilla y miras el dashboard reaccionar.
       - CHECKOUT_FAILURE_RATE=${CHECKOUT_FAILURE_RATE:-20}
-      - SLOW_SPIKE_RATE=${SLOW_SPIKE_RATE:-10}
+      - SLOW_SPIKE_RATE=${SLOW_SPIKE_RATE:-5}
     depends_on:
       # service_started (no service_healthy): el exportador OTLP reintenta solo si lgtm
       # aún no está listo, así que no necesitamos esperar a que Grafana responda.

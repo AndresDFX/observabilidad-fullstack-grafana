@@ -165,12 +165,14 @@ def _pct(env_name: str, default: str) -> float:
 
 
 CHECKOUT_FAILURE_RATE = _pct("CHECKOUT_FAILURE_RATE", "20")  # % de checkouts que fallan (503)
-SLOW_SPIKE_RATE = _pct("SLOW_SPIKE_RATE", "10")              # % de /slow con pico de latencia
-# OJO al 10%: con 15% la cola por encima de 0.4 s quedaba en EXACTAMENTE el 5% del trafico
-# (0.20*0.15 + 0.02 de checkouts fallidos), justo en el filo del p95 -> el p95 parpadeaba
-# entre ~0.4 s y ~1.5 s en reposo, sin que nadie tocara nada, y la demo "mira subir el p95"
-# fallaba la mitad de las veces. Con 10% la cola baja al 4% y el p95 se queda quieto en
-# ~0.4 s, asi que la rafaga de ./trafico.sh lento se ve como un salto limpio y repetible.
+SLOW_SPIKE_RATE = _pct("SLOW_SPIKE_RATE", "5")               # % de /slow con pico de latencia
+# POR QUE 5% Y NO 15%: la cola por encima de 0.4 s es 0.20*p + 0.02 (los checkouts que
+# fallan). Con p=15% eso da EXACTAMENTE el 5%, justo en el filo que define el p95, asi que
+# el p95 en reposo parpadeaba entre 0.4 s y 1.5 s sin que nadie tocara nada (medido: cinco
+# lecturas seguidas dieron 1.59, 1.34, 1.53, 0.40 y 0.38 s). Con p=5% la cola baja al 3% y
+# el p95 se queda quieto en ~0.4 s, que es el "antes" limpio que necesita la demo.
+# El pico de la demo YA NO depende de esta perilla: lo fuerza ./trafico.sh lento con
+# /slow?spike=1, asi que el salto del p95 a ~2 s ocurre el 100% de las veces.
 
 log.info(
     "perillas: CHECKOUT_FAILURE_RATE=%d%% | SLOW_SPIKE_RATE=%d%%",
@@ -230,12 +232,31 @@ async def root():
 
 
 @app.get("/slow")
-async def slow():
-    """Latencia variable: la mayoría rápido, con picos ocasionales (cola larga)."""
+async def slow(spike: int = 0):
+    """Latencia variable: la mayoría rápido, con picos ocasionales (cola larga).
+
+    `?spike=1` FUERZA el pico (1.0-2.5 s) en esa petición. Lo usa ./trafico.sh lento
+    para que la demo del p95 sea DETERMINISTA, y esa es una historia que vale la pena
+    contar en el taller:
+
+      Una ráfaga a /slow "normal" NO mueve el p95 de forma fiable. Con la perilla al
+      10%, de 40 peticiones solo ~4 son picos y ~36 son RÁPIDAS (0.05-0.4 s): la
+      ráfaga DILUYE la cola casi tanto como la estresa. Medido: el p95 pasaba de
+      0.38 s a solo 0.48 s, y cruzaba 1 s en menos de la mitad de las corridas.
+      Peor: no hay valor de la perilla que arregle esto, porque para que la ráfaga
+      mueva el p95 hace falta que la cola supere el 5%, y para que el p95 esté quieto
+      en reposo hace falta que NO lo supere. Es una contradicción.
+
+    Forzando el pico, la cola de la ráfaga es del 100% y el p95 salta de ~0.4 s a
+    ~2 s SIEMPRE. No añade cardinalidad: la etiqueta `route` de la métrica es el path
+    (`/slow`), no el query string.
+    """
     with tracer.start_as_current_span("query_inventory") as span:
-        # SLOW_SPIKE_RATE (perilla, def. 10%) de las veces se dispara la latencia
+        # SLOW_SPIKE_RATE (perilla, def. 5%) de las veces se dispara la latencia sola
         # (dependencia lenta simulada). Ajústala con: ./ajustar.sh latencia <0-100>
-        if random.random() < SLOW_SPIKE_RATE:
+        forzado = spike == 1
+        span.set_attribute("inventory.forced_spike", forzado)
+        if forzado or random.random() < SLOW_SPIKE_RATE:
             delay = random.uniform(1.0, 2.5)
             span.set_attribute("inventory.cache_hit", False)
         else:

@@ -104,7 +104,7 @@ Configuradas en `grafana/provisioning/datasources/datasources.yml`:
 ./ajustar.sh fallo 50    # el 50% de checkouts falla (incidente)
 ./ajustar.sh fallo 0     # "el fix": recuperación en vivo
 ./ajustar.sh latencia 60 # 60% de /slow con picos de latencia
-./ajustar.sh reset       # vuelve a los valores del taller (fallo 20, latencia 10)
+./ajustar.sh reset       # vuelve a los valores del taller (fallo 20, latencia 5)
 ./alerta.sh              # estado de la alerta (FIRING con fallo>=50) + notificaciones recibidas
 ./alerta.sh probar       # receta completa para dispararla y resolverla
 ./estado.sh              # servicios + perillas activas + URLs
@@ -115,7 +115,7 @@ Perillas disponibles (variables de entorno, 0–100):
 | Variable | Qué controla | Default |
 |---|---|---|
 | `CHECKOUT_FAILURE_RATE` | % de `/checkout` que devuelve 503 | `20` |
-| `SLOW_SPIKE_RATE` | % de `/slow` con pico de latencia (1–2.5 s) | `10` |
+| `SLOW_SPIKE_RATE` | % de `/slow` con pico de latencia (1–2.5 s) | `5` |
 
 ## Ver logs de cada servicio
 

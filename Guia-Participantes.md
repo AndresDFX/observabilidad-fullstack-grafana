@@ -173,7 +173,7 @@ Verifica el estado cuando quieras:
 ```
 
 Deberías ver los tres servicios `Up` (`lgtm` y `app` como `healthy`) y las perillas activas
-(`CHECKOUT_FAILURE_RATE=20%  SLOW_SPIKE_RATE=10%`).
+(`CHECKOUT_FAILURE_RATE=20%  SLOW_SPIKE_RATE=5%`).
 
 > ⏱️ En Codespaces, el `.devcontainer` ya corrió `docker compose pull && build` al crear el entorno
 > (pre-descargó `otel-lgtm` ~1 GB y construyó las imágenes), así que este `start.sh` suele ser rápido.
@@ -288,7 +288,7 @@ Ahora el de latencia:
 | Escenario | Qué provoca | Qué verás en el dashboard |
 |---|---|---|
 | `./trafico.sh pico` | ráfaga de checkouts (~20% fallan con 503) | pico rojo en **Errors**, sube el % de 5xx |
-| `./trafico.sh lento` | ráfaga a `/slow` (picos de 1–2.5 s) | el **p95** (naranja) salta de ~0.4 s a ~1.3 s: se triplica. El **p99 no se mueve** — ese lo fijan los timeouts de `/checkout` |
+| `./trafico.sh lento` | 30 peticiones a `/slow` con **pico forzado** | el **p95** (naranja) salta de ~0.4 s a ~2 s, siempre. El **p99 no se mueve** — `/slow` tarda 2.5 s como máximo y el p99 lo fijan los timeouts de `/checkout` (2.8–3.5 s) |
 | `./trafico.sh mixto` | de todo un poco | suben las tres rutas en Rate |
 
 > 🔁 **La mecánica del taller es esta:** script en la terminal → 30 s → efecto en el dashboard.
@@ -392,7 +392,7 @@ subida es el incidente; la caída, el fix):
 **4. Vuelve a los valores del taller:**
 
 ```bash
-./ajustar.sh reset      # fallo 20%, latencia 10%
+./ajustar.sh reset      # fallo 20%, latencia 5%
 ```
 
 > 🎛️ **La otra perilla:** `./ajustar.sh latencia 60` hace que el 60% de las peticiones a `/slow`

@@ -8,7 +8,7 @@
 #   ./ajustar.sh fallo 50      # el 50% de los checkouts fallan  (INCIDENTE GRAVE)
 #   ./ajustar.sh fallo 0       # nadie falla                    ("desplegaste el fix")
 #   ./ajustar.sh latencia 60   # el 60% de /slow tiene picos de 1-2.5 s
-#   ./ajustar.sh reset         # vuelve a los valores del taller (fallo 20, latencia 10)
+#   ./ajustar.sh reset         # vuelve a los valores del taller (fallo 20, latencia 5)
 #   ./ajustar.sh estado        # muestra las perillas actuales
 #
 # Cómo funciona: escribe la perilla en `.env` (Compose lo lee automáticamente) y
@@ -78,15 +78,15 @@ EOF
 EOF
     ;;
   reset)
-    echo "==> Volviendo a los valores del taller (fallo 20%, latencia 10%)..."
+    echo "==> Volviendo a los valores del taller (fallo 20%, latencia 5%)..."
     set_var CHECKOUT_FAILURE_RATE 20
-    set_var SLOW_SPIKE_RATE 10
+    set_var SLOW_SPIKE_RATE 5
     aplicar
     ;;
   estado)
     echo "Perillas configuradas (${ENV_FILE}):"
     echo "  CHECKOUT_FAILURE_RATE=$(get_var CHECKOUT_FAILURE_RATE)  (vacío = 20 por defecto)"
-    echo "  SLOW_SPIKE_RATE=$(get_var SLOW_SPIKE_RATE)  (vacío = 10 por defecto)"
+    echo "  SLOW_SPIKE_RATE=$(get_var SLOW_SPIKE_RATE)  (vacío = 5 por defecto)"
     echo
     echo "Perillas ACTIVAS en el contenedor:"
     docker compose exec -T app sh -c 'echo "  CHECKOUT_FAILURE_RATE=${CHECKOUT_FAILURE_RATE}%  SLOW_SPIKE_RATE=${SLOW_SPIKE_RATE}%"' 2>/dev/null \
